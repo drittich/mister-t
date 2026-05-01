@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Sub-tasks</title>
+    <link rel="stylesheet" href="../css/popup.css" />
+    <style>
+        body { padding: 8px 4px; }
+    </style>
+</head>
+<body>
+    <div id="parent-line" class="parent-line" style="display:none;">
+        <span class="label">Parent:</span>
+        <span class="link" id="parent-name"></span>
+    </div>
+
+    <div id="children"></div>
+
+    <div class="actions">
+        <span class="link" id="add-link">+ Add sub-task</span>
+    </div>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script src="../js/graph.js"></script>
+    <script>
+        const t = TrelloPowerUp.iframe();
+
+        async function render() {
+            const me = await t.card('id');
+            const allCards = await t.cards('id', 'name');
+            const byId = new Map(allCards.map((c) => [c.id, c]));
+
+            // Parent line
+            const parentId = await SubtaskGraph.getParentId(t, me.id);
+            const parentLine = document.getElementById('parent-line');
+            const parentName = document.getElementById('parent-name');
+            if (parentId) {
+                const p = byId.get(parentId);
+                parentName.textContent = p ? p.name : '(unavailable)';
+                parentName.onclick = () => p && t.showCard(p.id);
+                parentLine.style.display = 'flex';
+            } else {
+                parentLine.style.display = 'none';
+            }
+
+            // Children
+            const childIds = await SubtaskGraph.getChildIds(t, me.id);
+            const container = document.getElementById('children');
+            container.innerHTML = '';
+            if (!childIds.length) {
+                container.innerHTML = '<div class="empty">No sub-tasks yet.</div>';
+            } else {
+                for (const childId of childIds) {
+                    const c = byId.get(childId);
+                    const row = document.createElement('div');
+                    row.className = 'child-row';
+                    const name = document.createElement('div');
+                    name.className = 'name';
+                    name.textContent = c ? c.name : '(card not on this board)';
+                    if (c) name.addEventListener('click', () => t.showCard(c.id));
+                    const detach = document.createElement('span');
+                    detach.className = 'detach';
+                    detach.textContent = '× detach';
+                    detach.title = 'Remove this sub-task relationship';
+                    detach.addEventListener('click', async () => {
+                        try {
+                            await SubtaskGraph.setParent(t, childId, null);
+                            await render();
+                        } catch (e) {
+                            alert(e.message || String(e));
+                        }
+                    });
+                    row.appendChild(name);
+                    row.appendChild(detach);
+                    container.appendChild(row);
+                }
+            }
+
+            t.sizeTo('body');
+        }
+
+        document.getElementById('add-link').addEventListener('click', () => {
+            t.popup({
+                title: 'Add sub-task',
+                url: 'add-subtask.html',
+                height: 280,
+            });
+        });
+
+        render();
+
+        // Re-render whenever the card's pluginData changes elsewhere.
+        t.render(render);
+    </script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Change parent</title>
+    <link rel="stylesheet" href="../css/popup.css" />
+</head>
+<body>
+    <div id="current-parent" class="parent-line" style="display:none;">
+        <span class="label">Current parent:</span>
+        <span id="current-parent-name"></span>
+    </div>
+
+    <label for="search">Pick a new parent</label>
+    <input type="text" id="search" placeholder="Type to filter cards…" autofocus />
+    <div class="list" id="list"></div>
+    <div class="error" id="error" style="display:none;"></div>
+
+    <div class="actions">
+        <button id="detach-btn" class="secondary grow">Detach (no parent)</button>
+    </div>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script src="../js/graph.js"></script>
+    <script>
+        const t = TrelloPowerUp.iframe();
+
+        let allCards = [];
+        let currentCardId = null;
+        let forbidden = new Set();
+
+        async function load() {
+            const card = await t.card('id');
+            currentCardId = card.id;
+
+            // Forbidden = self + all descendants (would create a cycle).
+            const desc = await SubtaskGraph.getDescendantIds(t, currentCardId);
+            forbidden = new Set([currentCardId, ...desc]);
+
+            allCards = await t.cards('id', 'name');
+
+            const parentId = await SubtaskGraph.getParentId(t, currentCardId);
+            if (parentId) {
+                const p = allCards.find((c) => c.id === parentId);
+                document.getElementById('current-parent-name').textContent = p ? p.name : '(card not on this board)';
+                document.getElementById('current-parent').style.display = 'flex';
+            } else {
+                document.getElementById('detach-btn').disabled = true;
+                document.getElementById('detach-btn').textContent = 'Already has no parent';
+            }
+
+            render('');
+            t.sizeTo('body');
+        }
+
+        function render(query) {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            const q = query.toLowerCase();
+            const matches = allCards.filter((c) => !forbidden.has(c.id) && c.name.toLowerCase().includes(q));
+            if (!matches.length) {
+                list.innerHTML = '<div class="empty">No cards match.</div>';
+                return;
+            }
+            for (const c of matches.slice(0, 50)) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.innerHTML = '<div class="name"></div>';
+                row.querySelector('.name').textContent = c.name;
+                row.addEventListener('click', () => pickParent(c.id));
+                list.appendChild(row);
+            }
+        }
+
+        async function pickParent(newParentId) {
+            const errEl = document.getElementById('error');
+            errEl.style.display = 'none';
+            try {
+                await SubtaskGraph.setParent(t, currentCardId, newParentId);
+                await t.closePopup();
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                errEl.style.display = 'block';
+            }
+        }
+
+        document.getElementById('search').addEventListener('input', (e) => render(e.target.value));
+
+        document.getElementById('detach-btn').addEventListener('click', async () => {
+            const errEl = document.getElementById('error');
+            errEl.style.display = 'none';
+            try {
+                await SubtaskGraph.setParent(t, currentCardId, null);
+                await t.closePopup();
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                errEl.style.display = 'block';
+            }
+        });
+
+        load();
+    </script>
+</body>
+</html>

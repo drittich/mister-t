@@ -1,0 +1,69 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    color: #172b4d;
+    background: #fff;
+}
+body { padding: 12px; }
+
+.tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #dfe1e6; }
+.tab {
+    flex: 1; padding: 8px; text-align: center; cursor: pointer;
+    color: #5e6c84; border-bottom: 2px solid transparent; user-select: none;
+}
+.tab.active { color: #0079bf; border-bottom-color: #0079bf; font-weight: 600; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+label { display: block; margin: 8px 0 4px; font-size: 12px; color: #5e6c84; font-weight: 600; }
+input[type="text"], select {
+    width: 100%; box-sizing: border-box;
+    padding: 8px 10px; border: 1px solid #dfe1e6; border-radius: 3px;
+    font-size: 14px; outline: none;
+}
+input[type="text"]:focus, select:focus { border-color: #0079bf; }
+
+button {
+    background: #0079bf; color: #fff; border: 0; padding: 8px 14px;
+    border-radius: 3px; font-size: 14px; cursor: pointer;
+}
+button:hover { background: #026aa7; }
+button.secondary { background: #f4f5f7; color: #172b4d; }
+button.secondary:hover { background: #ebecf0; }
+button.danger { background: #eb5a46; }
+button.danger:hover { background: #cf513d; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.row { display: flex; gap: 6px; align-items: center; padding: 6px 4px; border-radius: 3px; }
+.row:hover { background: #f4f5f7; cursor: pointer; }
+.row .name { flex: 1; }
+.row .meta { color: #5e6c84; font-size: 12px; }
+
+.list { max-height: 220px; overflow-y: auto; margin-top: 6px; }
+.empty { color: #5e6c84; padding: 12px; text-align: center; font-style: italic; }
+.error { color: #eb5a46; margin-top: 8px; font-size: 13px; }
+.muted { color: #5e6c84; font-size: 12px; }
+
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.actions .grow { flex: 1; }
+
+a, .link { color: #0079bf; text-decoration: none; cursor: pointer; }
+a:hover, .link:hover { text-decoration: underline; }
+
+.parent-line {
+    background: #f4f5f7; padding: 6px 8px; border-radius: 3px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+}
+.parent-line .label { color: #5e6c84; font-size: 12px; }
+
+.child-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 4px; border-bottom: 1px solid #f4f5f7;
+}
+.child-row:last-child { border-bottom: 0; }
+.child-row .name { flex: 1; cursor: pointer; }
+.child-row .name:hover { color: #0079bf; text-decoration: underline; }
+.child-row .detach { color: #5e6c84; font-size: 12px; cursor: pointer; }
+.child-row .detach:hover { color: #eb5a46; }

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Add sub-task</title>
+    <link rel="stylesheet" href="../css/popup.css" />
+</head>
+<body>
+    <div class="tabs">
+        <div class="tab active" data-tab="create">Create new</div>
+        <div class="tab" data-tab="attach">Attach existing</div>
+    </div>
+
+    <div class="panel active" id="panel-create">
+        <label for="new-name">Sub-task name</label>
+        <input type="text" id="new-name" placeholder="What needs doing?" autofocus />
+
+        <label for="new-list">List</label>
+        <select id="new-list"></select>
+
+        <div class="actions">
+            <button id="create-btn" class="grow">Create sub-task</button>
+        </div>
+        <div class="error" id="create-error" style="display:none;"></div>
+        <div class="muted" id="auth-hint" style="display:none; margin-top:8px;">
+            First time: Trello will prompt you to authorize this Power-Up to create cards.
+        </div>
+    </div>
+
+    <div class="panel" id="panel-attach">
+        <label for="attach-search">Search cards on this board</label>
+        <input type="text" id="attach-search" placeholder="Type to filter…" />
+        <div class="list" id="attach-list"></div>
+        <div class="error" id="attach-error" style="display:none;"></div>
+    </div>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script src="../js/graph.js"></script>
+    <script>
+        const t = TrelloPowerUp.iframe();
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach((el) => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach((x) => x.classList.remove('active'));
+                el.classList.add('active');
+                document.getElementById('panel-' + el.dataset.tab).classList.add('active');
+                t.sizeTo('body');
+            });
+        });
+
+        // ---- Create new ----
+        async function loadLists() {
+            const lists = await t.lists('id', 'name');
+            const card = await t.card('idList');
+            const sel = document.getElementById('new-list');
+            sel.innerHTML = '';
+            for (const list of lists) {
+                const opt = document.createElement('option');
+                opt.value = list.id;
+                opt.textContent = list.name;
+                if (list.id === card.idList) opt.selected = true;
+                sel.appendChild(opt);
+            }
+        }
+
+        document.getElementById('create-btn').addEventListener('click', async () => {
+            const name = document.getElementById('new-name').value.trim();
+            const idList = document.getElementById('new-list').value;
+            const errEl = document.getElementById('create-error');
+            errEl.style.display = 'none';
+
+            if (!name) {
+                errEl.textContent = 'Name is required.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            const btn = document.getElementById('create-btn');
+            btn.disabled = true;
+            btn.textContent = 'Creating…';
+
+            try {
+                const Trello = await t.getRestApi().getToken().then(async (token) => {
+                    if (!token) {
+                        document.getElementById('auth-hint').style.display = 'block';
+                        await t.getRestApi().authorize({ scope: 'read,write' });
+                    }
+                    return window.Trello || null;
+                });
+
+                const restApi = t.getRestApi();
+                const apiKey = restApi.appKey;
+                const apiToken = await restApi.getToken();
+
+                const params = new URLSearchParams({
+                    name,
+                    idList,
+                    key: apiKey,
+                    token: apiToken,
+                });
+                const resp = await fetch('https://api.trello.com/1/cards?' + params.toString(), {
+                    method: 'POST',
+                });
+                if (!resp.ok) {
+                    throw new Error('Trello API error: ' + resp.status);
+                }
+                const newCard = await resp.json();
+
+                const parent = await t.card('id');
+                await SubtaskGraph.setParent(t, newCard.id, parent.id);
+
+                await t.closePopup();
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Create sub-task';
+            }
+        });
+
+        // ---- Attach existing ----
+        let allCards = [];
+        let currentCardId = null;
+        let forbidden = new Set();
+
+        async function loadAttachable() {
+            const card = await t.card('id');
+            currentCardId = card.id;
+            const desc = await SubtaskGraph.getDescendantIds(t, currentCardId);
+            forbidden = new Set([currentCardId, ...desc]);
+            allCards = await t.cards('id', 'name');
+            renderAttach('');
+        }
+
+        function renderAttach(query) {
+            const list = document.getElementById('attach-list');
+            list.innerHTML = '';
+            const q = query.toLowerCase();
+            const matches = allCards.filter((c) => !forbidden.has(c.id) && c.name.toLowerCase().includes(q));
+            if (!matches.length) {
+                list.innerHTML = '<div class="empty">No cards match.</div>';
+                return;
+            }
+            for (const c of matches.slice(0, 50)) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.innerHTML = '<div class="name"></div>';
+                row.querySelector('.name').textContent = c.name;
+                row.addEventListener('click', async () => {
+                    const errEl = document.getElementById('attach-error');
+                    errEl.style.display = 'none';
+                    try {
+                        await SubtaskGraph.setParent(t, c.id, currentCardId);
+                        await t.closePopup();
+                    } catch (e) {
+                        errEl.textContent = e.message || String(e);
+                        errEl.style.display = 'block';
+                    }
+                });
+                list.appendChild(row);
+            }
+        }
+
+        document.getElementById('attach-search').addEventListener('input', (e) => {
+            renderAttach(e.target.value);
+        });
+
+        // Initial load (lists for create, cards for attach)
+        Promise.all([loadLists(), loadAttachable()]).then(() => t.sizeTo('body'));
+    </script>
+</body>
+</html>
