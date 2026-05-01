@@ -1,4 +1,4 @@
-# Trello Sub-Task Power-Up
+# Mister-T
 
 A private, internal-only Trello Power-Up that adds parent/child sub-task
 relationships to cards (any depth). Static files only — host on GitHub Pages,
