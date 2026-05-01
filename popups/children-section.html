@@ -78,7 +78,14 @@
             // does not refresh card-back-section iframes (the iframe stays bound to its
             // original card), which would leave this section showing the wrong card's
             // sub-tasks after navigation.
-            const allCards = await t.cards('id', 'name', 'url');
+            //
+            // These three calls are independent given me.id — fire in parallel
+            // so the section paints after one round-trip instead of three.
+            const [allCards, parentId, childIds] = await Promise.all([
+                t.cards('id', 'name', 'url'),
+                SubtaskGraph.getParentId(t, me.id),
+                SubtaskGraph.getChildIds(t, me.id),
+            ]);
             const byId = new Map(allCards.map((c) => [c.id, c]));
             const goToCard = (card) => {
                 if (!card) return;
@@ -88,9 +95,6 @@
                     t.showCard(card.id);
                 }
             };
-
-            const parentId = await SubtaskGraph.getParentId(t, me.id);
-            const childIds = await SubtaskGraph.getChildIds(t, me.id);
 
             const parentLine = document.getElementById('parent-line');
             const parentLineLabel = document.getElementById('parent-line-label');

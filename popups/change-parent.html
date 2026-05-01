@@ -33,13 +33,32 @@
             const card = await t.card('id');
             currentCardId = card.id;
 
-            // Forbidden = self + all descendants (would create a cycle).
-            const desc = await SubtaskGraph.getDescendantIds(t, currentCardId);
-            forbidden = new Set([currentCardId, ...desc]);
+            // Self is always forbidden; descendants get folded in once the
+            // walk resolves. Painting the list before then keeps the dialog
+            // responsive on deep trees — the descendant set just narrows the
+            // results when it arrives.
+            forbidden = new Set([currentCardId]);
 
-            allCards = await t.cards('id', 'name');
+            // These three calls are independent given currentCardId, so fire
+            // them in parallel instead of awaiting in series.
+            const cardsP = t.cards('id', 'name');
+            const descP = SubtaskGraph.getDescendantIds(t, currentCardId);
+            const parentIdP = SubtaskGraph.getParentId(t, currentCardId);
 
-            const parentId = await SubtaskGraph.getParentId(t, currentCardId);
+            // Paint as soon as the card list arrives — don't wait for the
+            // descendant walk or the parent lookup.
+            allCards = await cardsP;
+            render(document.getElementById('search').value || '');
+            t.sizeTo('body');
+
+            // Re-filter once the descendant walk completes.
+            descP.then((desc) => {
+                forbidden = new Set([currentCardId, ...desc]);
+                render(document.getElementById('search').value || '');
+                t.sizeTo('body');
+            });
+
+            const parentId = await parentIdP;
             const searchLabel = document.querySelector('label[for="search"]');
             const detachLine = document.getElementById('detach-line');
             const detachBtn = document.getElementById('detach-btn');
@@ -65,7 +84,8 @@
                 searchLabel.textContent = 'Pick a parent';
             }
 
-            render('');
+            // Header chrome (current-parent line / detach link / label) just
+            // changed — refit. The list itself was already painted above.
             t.sizeTo('body');
         }
 

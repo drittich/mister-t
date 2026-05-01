@@ -53,8 +53,12 @@
 
         // ---- Create new ----
         async function loadLists() {
-            const lists = await t.lists('id', 'name');
-            const card = await t.card('idList');
+            // Independent calls — fire in parallel so we wait one round-trip
+            // instead of two.
+            const [lists, card] = await Promise.all([
+                t.lists('id', 'name'),
+                t.card('idList'),
+            ]);
             const sel = document.getElementById('new-list');
             sel.innerHTML = '';
             for (const list of lists) {
@@ -129,10 +133,22 @@
         async function loadAttachable() {
             const card = await t.card('id');
             currentCardId = card.id;
-            const desc = await SubtaskGraph.getDescendantIds(t, currentCardId);
-            forbidden = new Set([currentCardId, ...desc]);
-            allCards = await t.cards('id', 'name');
-            renderAttach('');
+
+            // Self is always forbidden; descendants get folded in once the
+            // walk resolves. Painting the list before the descendant walk
+            // keeps the dialog responsive on deep trees.
+            forbidden = new Set([currentCardId]);
+
+            const cardsP = t.cards('id', 'name');
+            const descP = SubtaskGraph.getDescendantIds(t, currentCardId);
+
+            allCards = await cardsP;
+            renderAttach(document.getElementById('attach-search').value || '');
+
+            descP.then((desc) => {
+                forbidden = new Set([currentCardId, ...desc]);
+                renderAttach(document.getElementById('attach-search').value || '');
+            });
         }
 
         let attaching = false;

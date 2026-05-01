@@ -70,55 +70,84 @@
         }
     }
 
-    // Walk descendants of `cardId` (DFS). Used for filtering out cards that
-    // can't legally become a parent of `cardId`.
+    // Walk descendants of `cardId` breadth-first, fetching each level's
+    // childIds in parallel (bounded). For a tree of depth D and N nodes,
+    // that's roughly D round-trips to the Trello host instead of N.
     async function getDescendantIds(t, cardId) {
         const out = new Set();
-        const stack = [cardId];
-        while (stack.length) {
-            const cur = stack.pop();
-            const kids = await getChildIds(t, cur);
-            for (const k of kids) {
-                if (!out.has(k)) {
-                    out.add(k);
-                    stack.push(k);
+        let frontier = [cardId];
+        while (frontier.length) {
+            const childLists = await mapLimit(frontier, 8, (id) => getChildIds(t, id));
+            const next = [];
+            for (const kids of childLists) {
+                for (const k of kids) {
+                    if (!out.has(k)) {
+                        out.add(k);
+                        next.push(k);
+                    }
                 }
             }
+            frontier = next;
         }
         return out;
+    }
+
+    // Run `worker(item)` over `items` with at most `limit` in flight at once.
+    // Bounded so a board of thousands of cards doesn't fire thousands of
+    // concurrent postMessage round-trips at the host iframe.
+    async function mapLimit(items, limit, worker) {
+        const results = new Array(items.length);
+        let next = 0;
+        const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+            while (true) {
+                const i = next++;
+                if (i >= items.length) return;
+                results[i] = await worker(items[i], i);
+            }
+        });
+        await Promise.all(runners);
+        return results;
     }
 
     // Rebuild every parent's childIds from the authoritative parentId on each card.
     // Returns { scanned, parentsUpdated }.
     async function rebuildIndex(t, onProgress) {
         const cards = await t.cards('all');
-        const groups = new Map(); // parentId -> [childId]
+        const CONCURRENCY = 8;
+
+        // Phase 1: read every card's parentId in parallel.
         let scanned = 0;
-        for (const card of cards) {
+        const parentIds = await mapLimit(cards, CONCURRENCY, async (card) => {
             const pid = await getParentId(t, card.id);
+            scanned++;
+            if (onProgress) onProgress(scanned, cards.length);
+            return pid;
+        });
+        const groups = new Map(); // parentId -> [childId]
+        cards.forEach((card, i) => {
+            const pid = parentIds[i];
             if (pid) {
                 if (!groups.has(pid)) groups.set(pid, []);
                 groups.get(pid).push(card.id);
             }
-            scanned++;
-            if (onProgress) onProgress(scanned, cards.length);
-        }
-        // Write fresh childIds for parents that have children.
-        let parentsUpdated = 0;
-        for (const [parentId, kids] of groups.entries()) {
-            await setChildIdsOn(t, parentId, kids);
-            parentsUpdated++;
-        }
-        // Clear childIds on parents that no longer have any (best-effort: only clears
-        // cards we already know about — i.e. cards on the board).
-        for (const card of cards) {
-            if (!groups.has(card.id)) {
-                const existing = await getChildIds(t, card.id);
-                if (existing.length > 0) {
-                    await setChildIdsOn(t, card.id, []);
-                }
+        });
+
+        // Phase 2: write fresh childIds for parents that have children.
+        const groupEntries = Array.from(groups.entries());
+        await mapLimit(groupEntries, CONCURRENCY, ([parentId, kids]) => setChildIdsOn(t, parentId, kids));
+        const parentsUpdated = groupEntries.length;
+
+        // Phase 3: clear stale childIds on cards that no longer have any.
+        // Best-effort: only clears cards we already know about — i.e. cards
+        // on the board.
+        const orphans = cards.filter((c) => !groups.has(c.id));
+        await mapLimit(orphans, CONCURRENCY, async (card) => {
+            const existing = await getChildIds(t, card.id);
+            if (existing.length > 0) {
+                await setChildIdsOn(t, card.id, []);
             }
-        }
+        });
+
         return { scanned, parentsUpdated };
     }
 
