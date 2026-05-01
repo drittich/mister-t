@@ -10,13 +10,14 @@
     </style>
 </head>
 <body>
-    <div id="parent-line" class="parent-line">
+    <div id="parent-line" class="parent-line" style="display:none;">
         <span class="label" id="parent-line-label">Parent:</span>
         <span class="link" id="parent-name"></span>
         <span class="link parent-line-action" id="parent-action"></span>
     </div>
 
     <div id="children"></div>
+    <div id="undo-slot"></div>
 
     <div class="actions" id="add-row">
         <span class="link" id="add-link">+ Add sub-task</span>
@@ -26,6 +27,21 @@
     <script src="../js/graph.js"></script>
     <script>
         const t = TrelloPowerUp.iframe();
+
+        // Holds an in-flight undo opportunity across re-renders. Trello's
+        // t.render() fires whenever pluginData changes, so detach itself causes
+        // a re-render — we need to remember "user just detached X, show the
+        // strip" through that cycle.
+        let pendingUndo = null; // { childId, parentId, name, expiresAt }
+        let undoTimer = null;
+
+        function clearUndo() {
+            pendingUndo = null;
+            if (undoTimer) {
+                clearTimeout(undoTimer);
+                undoTimer = null;
+            }
+        }
 
         async function render() {
             const me = await t.card('id');
@@ -40,16 +56,13 @@
                 if (card.url) {
                     t.navigate({ url: card.url });
                 } else {
-                    // Fallback if the platform ever stops surfacing url on t.cards()
                     t.showCard(card.id);
                 }
             };
 
-            // Parent line — visible in both states. With a parent: shows
-            // "Parent: <name>  Change". Without: shows "+ Set parent…".
-            // The Change/Set-parent link fills the discoverability gap left by
-            // Trello's new card-back UI hiding card-buttons behind the rocket icon.
             const parentId = await SubtaskGraph.getParentId(t, me.id);
+            const childIds = await SubtaskGraph.getChildIds(t, me.id);
+
             const parentLine = document.getElementById('parent-line');
             const parentLineLabel = document.getElementById('parent-line-label');
             const parentName = document.getElementById('parent-name');
@@ -62,13 +75,25 @@
                     mouseEvent: e,
                 });
             };
-            if (parentId) {
+
+            // Parent-line policy:
+            //   - has parent: show "↑ Parent: <name>  Change"
+            //   - no parent + has children: show "+ Set parent…" (still useful — this
+            //     branch already manages downstream work, so parent context is meaningful)
+            //   - no parent + no children: hide entirely. The empty-state CTA is the
+            //     primary action; a secondary "make this a sub-task" link sits beneath
+            //     it so the two operations don't compete at equal weight.
+            const isOrphanLeaf = !parentId && !childIds.length;
+            if (isOrphanLeaf) {
+                parentLine.style.display = 'none';
+                parentLineLabel.classList.remove('link');
+                parentLineLabel.onclick = null;
+                parentName.onclick = null;
+                parentAction.onclick = null;
+            } else if (parentId) {
                 const p = byId.get(parentId);
                 const pn = p ? p.name : '(unavailable)';
                 parentLine.classList.remove('is-orphan');
-                // The label and the name share the same click target so the whole
-                // left side reads as one navigation control. The ↑ arrow hints at
-                // navigation; the link styling on both pieces does the rest.
                 parentLineLabel.textContent = '↑ Parent:';
                 parentLineLabel.style.display = '';
                 parentLineLabel.classList.add('link');
@@ -80,8 +105,9 @@
                 parentName.onclick = () => goToCard(p);
                 parentAction.textContent = 'Change';
                 parentAction.title = 'Pick a different parent for this card';
+                parentAction.onclick = openChangeParent;
+                parentLine.style.display = 'flex';
             } else {
-                // No parent yet — slot is now a single "Set parent…" affordance.
                 parentLine.classList.add('is-orphan');
                 parentLineLabel.style.display = 'none';
                 parentLineLabel.classList.remove('link');
@@ -90,19 +116,19 @@
                 parentName.onclick = null;
                 parentAction.textContent = '+ Set parent…';
                 parentAction.title = 'Make this card a sub-task of another card';
+                parentAction.onclick = openChangeParent;
+                parentLine.style.display = 'flex';
             }
-            parentAction.onclick = openChangeParent;
-            parentLine.style.display = 'flex';
 
-            // Children
-            const childIds = await SubtaskGraph.getChildIds(t, me.id);
             const container = document.getElementById('children');
+            const undoSlot = document.getElementById('undo-slot');
             const addRow = document.getElementById('add-row');
             container.innerHTML = '';
+            undoSlot.innerHTML = '';
+
             if (!childIds.length) {
-                // The empty state IS the call-to-action — one block, action-forward.
-                // Copy adapts to whether this card is itself a sub-task: leaf nodes
-                // skip the concept framing since the user already understands it.
+                // Empty state IS the call-to-action. Copy adapts to whether the card
+                // is itself a sub-task — leaf nodes already understand the concept.
                 const block = document.createElement('div');
                 block.className = 'empty-cta';
 
@@ -116,7 +142,7 @@
                 if (!parentId) {
                     const desc = document.createElement('div');
                     desc.className = 'empty-cta-desc';
-                    desc.textContent = 'Track smaller pieces of work that roll up to this card.';
+                    desc.textContent = 'Sub-tasks let you split this into smaller cards.';
                     block.appendChild(desc);
                 }
 
@@ -134,8 +160,17 @@
                 });
                 block.appendChild(cta);
 
+                // Orphan-leaf only: surface "Set parent" as a quiet secondary link
+                // beneath the primary action, since the parent-line is hidden.
+                if (isOrphanLeaf) {
+                    const setParent = document.createElement('span');
+                    setParent.className = 'link empty-cta-secondary';
+                    setParent.textContent = 'Or make this a sub-task of another card';
+                    setParent.addEventListener('click', openChangeParent);
+                    block.appendChild(setParent);
+                }
+
                 container.appendChild(block);
-                // Hide the bottom link to avoid two CTAs for the same action.
                 addRow.style.display = 'none';
             } else {
                 addRow.style.display = '';
@@ -147,169 +182,164 @@
                     const name = document.createElement('div');
                     name.className = 'name';
                     name.textContent = displayName;
-                    name.title = displayName; // long names truncate; reveal full on hover
+                    name.title = displayName;
                     if (c) name.addEventListener('click', () => goToCard(c));
 
-                    // Action area swaps between three states:
-                    //   1. idle:    "× detach"
-                    //   2. confirm: "Detach? [Yes] [Cancel]"
-                    //   3. error:   "Couldn't detach. [Retry] [Dismiss]"
-                    // A single click on "× detach" only opens the confirm — never destroys.
-                    const action = document.createElement('span');
-                    action.className = 'detach-action';
-                    row.appendChild(name);
-                    row.appendChild(action);
+                    // One-click detach. Reversible via the undo strip below the list,
+                    // so no inline confirm — match the weight of the action to its
+                    // consequence, not to the loudest treatment we could justify.
+                    const detach = document.createElement('span');
+                    detach.className = 'detach';
+                    detach.textContent = 'Detach';
+                    detach.title = 'Remove this sub-task relationship';
+                    detach.setAttribute('role', 'button');
+                    detach.setAttribute('tabindex', '0');
+                    detach.setAttribute('aria-label', 'Detach sub-task ' + displayName);
 
-                    let confirmTimer = null;
-                    const clearConfirmTimer = () => {
-                        if (confirmTimer) {
-                            clearTimeout(confirmTimer);
-                            confirmTimer = null;
+                    const doDetach = async () => {
+                        if (detach.dataset.busy === '1') return;
+                        detach.dataset.busy = '1';
+                        detach.style.opacity = '0.5';
+                        try {
+                            await SubtaskGraph.setParent(t, childId, null);
+                            // Stash the undo opportunity so it survives the t.render()
+                            // fired by the pluginData change.
+                            pendingUndo = {
+                                childId,
+                                parentId: me.id,
+                                name: displayName,
+                                expiresAt: Date.now() + 6000,
+                            };
+                            // render() runs again via t.render(); no manual re-render here.
+                        } catch (e) {
+                            detach.dataset.busy = '';
+                            detach.style.opacity = '';
+                            renderErrorStrip(e.message || String(e), () => doDetach());
                         }
                     };
+                    detach.addEventListener('click', doDetach);
+                    detach.addEventListener('keydown', (ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            doDetach();
+                        }
+                    });
 
-                    const renderIdle = () => {
-                        clearConfirmTimer();
-                        action.innerHTML = '';
-                        action.removeAttribute('role');
-                        action.removeAttribute('aria-label');
-                        const btn = document.createElement('span');
-                        btn.className = 'detach';
-                        btn.textContent = '× detach';
-                        btn.title = 'Remove this sub-task relationship';
-                        btn.setAttribute('role', 'button');
-                        btn.setAttribute('tabindex', '0');
-                        btn.setAttribute('aria-label', 'Remove sub-task ' + displayName);
-                        const open = () => renderConfirm();
-                        btn.addEventListener('click', open);
-                        btn.addEventListener('keydown', (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                                ev.preventDefault();
-                                open();
-                            }
-                        });
-                        action.appendChild(btn);
-                    };
-
-                    const renderConfirm = () => {
-                        action.innerHTML = '';
-                        action.setAttribute('role', 'group');
-                        action.setAttribute('aria-label', 'Confirm detach ' + displayName);
-
-                        const prompt = document.createElement('span');
-                        prompt.className = 'muted';
-                        prompt.textContent = 'Detach?';
-                        prompt.style.marginRight = '4px';
-
-                        const yes = document.createElement('span');
-                        yes.className = 'detach detach-confirm';
-                        yes.textContent = 'Yes';
-                        yes.setAttribute('role', 'button');
-                        yes.setAttribute('tabindex', '0');
-                        yes.setAttribute('aria-label', 'Confirm detach ' + displayName);
-
-                        const no = document.createElement('span');
-                        no.className = 'detach detach-cancel';
-                        no.textContent = 'Cancel';
-                        no.setAttribute('role', 'button');
-                        no.setAttribute('tabindex', '0');
-                        no.setAttribute('aria-label', 'Cancel detach');
-
-                        const cancel = () => renderIdle();
-                        no.addEventListener('click', cancel);
-                        no.addEventListener('keydown', (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Escape') {
-                                ev.preventDefault();
-                                cancel();
-                            }
-                        });
-
-                        let confirming = false;
-                        const confirm = async () => {
-                            if (confirming) return;
-                            confirming = true;
-                            clearConfirmTimer();
-                            yes.style.opacity = '0.5';
-                            yes.style.pointerEvents = 'none';
-                            no.style.pointerEvents = 'none';
-                            try {
-                                await SubtaskGraph.setParent(t, childId, null);
-                                // Successful detach triggers t.render() elsewhere, which re-runs
-                                // render() above. No need to re-render here ourselves.
-                            } catch (e) {
-                                confirming = false;
-                                renderError(e.message || String(e));
-                            }
-                        };
-                        yes.addEventListener('click', confirm);
-                        yes.addEventListener('keydown', (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                                ev.preventDefault();
-                                confirm();
-                            } else if (ev.key === 'Escape') {
-                                ev.preventDefault();
-                                cancel();
-                            }
-                        });
-
-                        action.appendChild(prompt);
-                        action.appendChild(yes);
-                        action.appendChild(no);
-                        // Move keyboard focus to Cancel — the safe default.
-                        no.focus();
-
-                        // Auto-revert after 8s of inactivity. Stops a forgotten confirm
-                        // from sitting there indefinitely if the user navigates away mentally.
-                        clearConfirmTimer();
-                        confirmTimer = setTimeout(() => renderIdle(), 8000);
-                    };
-
-                    const renderError = (msg) => {
-                        action.innerHTML = '';
-                        action.removeAttribute('role');
-                        action.removeAttribute('aria-label');
-                        const errSpan = document.createElement('span');
-                        errSpan.className = 'detach detach-error-msg';
-                        errSpan.textContent = "Couldn't detach.";
-                        errSpan.title = msg;
-
-                        const retry = document.createElement('span');
-                        retry.className = 'detach detach-retry';
-                        retry.textContent = 'Retry';
-                        retry.setAttribute('role', 'button');
-                        retry.setAttribute('tabindex', '0');
-
-                        const dismiss = document.createElement('span');
-                        dismiss.className = 'detach detach-cancel';
-                        dismiss.textContent = 'Dismiss';
-                        dismiss.setAttribute('role', 'button');
-                        dismiss.setAttribute('tabindex', '0');
-
-                        retry.addEventListener('click', () => renderConfirm());
-                        retry.addEventListener('keydown', (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                                ev.preventDefault();
-                                renderConfirm();
-                            }
-                        });
-                        dismiss.addEventListener('click', () => renderIdle());
-                        dismiss.addEventListener('keydown', (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                                ev.preventDefault();
-                                renderIdle();
-                            }
-                        });
-
-                        action.appendChild(errSpan);
-                        action.appendChild(retry);
-                        action.appendChild(dismiss);
-                    };
-
-                    renderIdle();
+                    row.appendChild(name);
+                    row.appendChild(detach);
                     container.appendChild(row);
                 }
             }
 
+            // Undo strip — only shown if we have a fresh pendingUndo for THIS card.
+            // The expiresAt check covers stale state if the user navigates away
+            // and comes back to a different card.
+            if (pendingUndo && pendingUndo.parentId === me.id && pendingUndo.expiresAt > Date.now()) {
+                renderUndoStrip(pendingUndo);
+            } else if (pendingUndo) {
+                clearUndo();
+            }
+
+            t.sizeTo('body');
+        }
+
+        function renderUndoStrip(undo) {
+            const slot = document.getElementById('undo-slot');
+            slot.innerHTML = '';
+
+            const strip = document.createElement('div');
+            strip.className = 'undo-strip';
+
+            const msg = document.createElement('span');
+            msg.className = 'undo-msg';
+            msg.textContent = 'Detached "' + undo.name + '"';
+            msg.title = msg.textContent;
+
+            const undoBtn = document.createElement('span');
+            undoBtn.className = 'link undo-action';
+            undoBtn.textContent = 'Undo';
+            undoBtn.setAttribute('role', 'button');
+            undoBtn.setAttribute('tabindex', '0');
+            const doUndo = async () => {
+                if (undoBtn.dataset.busy === '1') return;
+                undoBtn.dataset.busy = '1';
+                undoBtn.style.opacity = '0.5';
+                try {
+                    await SubtaskGraph.setParent(t, undo.childId, undo.parentId);
+                    clearUndo();
+                    // re-render arrives via t.render()
+                } catch (e) {
+                    undoBtn.dataset.busy = '';
+                    undoBtn.style.opacity = '';
+                    renderErrorStrip(e.message || String(e), doUndo);
+                }
+            };
+            undoBtn.addEventListener('click', doUndo);
+            undoBtn.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    doUndo();
+                }
+            });
+
+            strip.appendChild(msg);
+            strip.appendChild(undoBtn);
+            slot.appendChild(strip);
+
+            if (undoTimer) clearTimeout(undoTimer);
+            const remaining = Math.max(0, undo.expiresAt - Date.now());
+            undoTimer = setTimeout(() => {
+                clearUndo();
+                slot.innerHTML = '';
+                t.sizeTo('body');
+            }, remaining);
+        }
+
+        function renderErrorStrip(message, onRetry) {
+            const slot = document.getElementById('undo-slot');
+            slot.innerHTML = '';
+            const strip = document.createElement('div');
+            strip.className = 'undo-strip is-error';
+
+            const msg = document.createElement('span');
+            msg.className = 'undo-msg';
+            msg.textContent = 'Detach failed — ' + message;
+            msg.title = message;
+
+            const retry = document.createElement('span');
+            retry.className = 'link undo-action';
+            retry.textContent = 'Try again';
+            retry.setAttribute('role', 'button');
+            retry.setAttribute('tabindex', '0');
+            retry.addEventListener('click', () => onRetry && onRetry());
+            retry.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    onRetry && onRetry();
+                }
+            });
+
+            const dismiss = document.createElement('span');
+            dismiss.className = 'link undo-action';
+            dismiss.textContent = 'Dismiss';
+            dismiss.setAttribute('role', 'button');
+            dismiss.setAttribute('tabindex', '0');
+            const doDismiss = () => {
+                slot.innerHTML = '';
+                t.sizeTo('body');
+            };
+            dismiss.addEventListener('click', doDismiss);
+            dismiss.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    doDismiss();
+                }
+            });
+
+            strip.appendChild(msg);
+            strip.appendChild(retry);
+            strip.appendChild(dismiss);
+            slot.appendChild(strip);
             t.sizeTo('body');
         }
 
@@ -323,8 +353,6 @@
         });
 
         render();
-
-        // Re-render whenever the card's pluginData changes elsewhere.
         t.render(render);
     </script>
 </body>

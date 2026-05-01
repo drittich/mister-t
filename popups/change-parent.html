@@ -14,12 +14,11 @@
 
     <label for="search">Pick a new parent</label>
     <input type="text" id="search" placeholder="Type to filter cards…" autofocus />
+    <div class="detach-line" id="detach-line" style="display:none;">
+        <span class="link" id="detach-btn"></span>
+    </div>
     <div class="list" id="list"></div>
     <div class="error" id="error" style="display:none;"></div>
-
-    <div class="actions">
-        <button id="detach-btn" class="secondary grow">Detach (no parent)</button>
-    </div>
 
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script src="../js/graph.js"></script>
@@ -42,6 +41,7 @@
 
             const parentId = await SubtaskGraph.getParentId(t, currentCardId);
             const searchLabel = document.querySelector('label[for="search"]');
+            const detachLine = document.getElementById('detach-line');
             const detachBtn = document.getElementById('detach-btn');
             if (parentId) {
                 const p = allCards.find((c) => c.id === parentId);
@@ -51,11 +51,17 @@
                 cpName.title = pn;
                 document.getElementById('current-parent').style.display = 'flex';
                 searchLabel.textContent = 'Pick a new parent';
+                // Naming the parent makes the consequence unmistakable, so the user
+                // can't mis-click "Detach" while scanning the result list. Title
+                // attr keeps the full name available when the link truncates.
+                detachBtn.textContent = 'Or detach from "' + pn + '"';
+                detachBtn.title = detachBtn.textContent;
+                detachLine.style.display = 'flex';
             } else {
                 // No parent yet — this popup is doing "Set parent", not "Change".
                 // Hide the detach action (nothing to detach from), and adjust
                 // the search label to match.
-                detachBtn.style.display = 'none';
+                detachLine.style.display = 'none';
                 searchLabel.textContent = 'Pick a parent';
             }
 
@@ -132,17 +138,21 @@
 
         document.getElementById('detach-btn').addEventListener('click', async () => {
             const btn = document.getElementById('detach-btn');
-            if (btn.disabled) return;
+            if (btn.dataset.busy === '1') return;
             const errEl = document.getElementById('error');
             errEl.style.display = 'none';
             const originalText = btn.textContent;
-            btn.disabled = true;
+            btn.dataset.busy = '1';
+            btn.style.opacity = '0.5';
+            btn.style.pointerEvents = 'none';
             btn.textContent = 'Detaching…';
             try {
                 await SubtaskGraph.setParent(t, currentCardId, null);
                 await t.closePopup();
             } catch (e) {
-                btn.disabled = false;
+                btn.dataset.busy = '';
+                btn.style.opacity = '';
+                btn.style.pointerEvents = '';
                 btn.textContent = originalText;
                 errEl.textContent = e.message || String(e);
                 errEl.style.display = 'block';

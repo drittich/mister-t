@@ -187,7 +187,6 @@ button:disabled { opacity: var(--ds-opacity-disabled, 0.4); cursor: not-allowed;
 .empty-cta-desc {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
     font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
-    max-width: 28em;
 }
 .empty-cta-button {
     /* Inherits primary button colors from the base `button` rule.
@@ -266,12 +265,9 @@ a:focus-visible, .link:focus-visible {
     color: var(--ds-link, var(--popup-fb-link));
     text-decoration: underline;
 }
-.child-row .detach-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-}
+/* Detach is a small text action that matches the "Change" link in the parent
+   line — same weight, same color. Detach is reversible (undo strip below the
+   list), so it doesn't need danger styling. */
 .child-row .detach {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
     font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
@@ -281,44 +277,69 @@ a:focus-visible, .link:focus-visible {
     border-radius: var(--ds-radius-small, 3px);
 }
 .child-row .detach:hover {
-    color: var(--ds-text-danger, var(--popup-fb-text-danger));
+    color: var(--ds-text, var(--popup-fb-text));
     background: var(--ds-background-neutral-subtle-hovered, var(--popup-fb-neutral-subtle-hovered));
+    text-decoration: underline;
 }
 .child-row .detach:focus-visible {
     outline: 2px solid var(--ds-border-focused, var(--popup-fb-border-focused));
     outline-offset: 1px;
-    color: var(--ds-text-danger, var(--popup-fb-text-danger));
 }
-/* Inline confirm: "Yes" is the destructive choice — make it visually distinct so
-   the user can't miss what they're committing to. */
-.child-row .detach.detach-confirm {
-    color: var(--ds-text-inverse, var(--popup-fb-text-inverse));
-    background: var(--ds-background-danger-bold, var(--popup-fb-danger));
-    font-weight: var(--ds-font-weight-medium, 500);
+
+/* Undo strip — shown after a detach, with a 6s window to revert. Lives below
+   the children list, not inline with rows, so the user always knows where to
+   look for it. */
+.undo-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--ds-background-neutral, var(--popup-fb-neutral));
+    border-radius: var(--ds-radius-small, 3px);
 }
-.child-row .detach.detach-confirm:hover {
-    color: var(--ds-text-inverse, var(--popup-fb-text-inverse));
-    background: var(--ds-background-danger-bold-hovered, var(--popup-fb-danger-hovered));
-}
-.child-row .detach.detach-confirm:focus-visible {
-    color: var(--ds-text-inverse, var(--popup-fb-text-inverse));
-    outline: 2px solid var(--ds-border-focused, var(--popup-fb-border-focused));
-    outline-offset: 2px;
-}
-/* Cancel/Retry/Dismiss reuse the subtle look — keeps non-destructive actions
-   visually quieter than the danger button. */
-.child-row .detach.detach-cancel:hover,
-.child-row .detach.detach-retry:hover {
+.undo-strip .undo-msg {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--ds-text, var(--popup-fb-text));
-    background: var(--ds-background-neutral-subtle-hovered, var(--popup-fb-neutral-subtle-hovered));
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
 }
-.child-row .detach.detach-error-msg {
+.undo-strip .undo-action {
+    flex-shrink: 0;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
+}
+.undo-strip.is-error {
+    background: var(--ds-background-neutral, var(--popup-fb-neutral));
+}
+.undo-strip.is-error .undo-msg {
     color: var(--ds-text-danger, var(--popup-fb-text-danger));
-    cursor: default;
-    padding-right: 4px;
 }
-.child-row .detach.detach-error-msg:hover {
-    background: transparent;
+
+/* Subtle "Set parent" link beneath the empty-state CTA. Stays metadata-level
+   so it doesn't compete with the primary "Add sub-task" button above it. */
+.empty-cta-secondary {
+    margin-top: 4px;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
+}
+
+/* Detach link in change-parent.html — a small right-aligned text action under
+   the search input, not a full-width button. Sits in its own row so it can't
+   be mis-clicked while scanning the result list. */
+.detach-line {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.detach-line .link {
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
+    color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
+}
+.detach-line .link:hover {
+    color: var(--ds-text, var(--popup-fb-text));
 }
 
 /* Dark-mode safety net: only flips the *fallback* values. When ADS tokens are
