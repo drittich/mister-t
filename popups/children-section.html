@@ -13,6 +13,10 @@
     <div id="parent-line" class="parent-line" style="display:none;">
         <span class="label" id="parent-line-label">Parent:</span>
         <span class="link" id="parent-name"></span>
+        <span class="sibling-nav" id="sibling-nav" style="display:none;">
+            <span class="link sibling-btn" id="sibling-prev" role="button" tabindex="0" aria-label="Previous sibling" title="Previous sibling">‹ Prev</span>
+            <span class="link sibling-btn" id="sibling-next" role="button" tabindex="0" aria-label="Next sibling" title="Next sibling">Next ›</span>
+        </span>
         <span class="link parent-line-action" id="parent-action"></span>
     </div>
 
@@ -41,6 +45,31 @@
                 clearTimeout(undoTimer);
                 undoTimer = null;
             }
+        }
+
+        function setSiblingBtn(btn, card, goToCard) {
+            // Disabled state when at an end of the sibling list — keep the button
+            // visible so the user sees the boundary, but make it inert.
+            if (!card) {
+                btn.classList.add('is-disabled');
+                btn.removeAttribute('tabindex');
+                btn.setAttribute('aria-disabled', 'true');
+                btn.title = '';
+                btn.onclick = null;
+                btn.onkeydown = null;
+                return;
+            }
+            btn.classList.remove('is-disabled');
+            btn.setAttribute('tabindex', '0');
+            btn.removeAttribute('aria-disabled');
+            btn.title = 'Open ' + card.name;
+            btn.onclick = () => goToCard(card);
+            btn.onkeydown = (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    goToCard(card);
+                }
+            };
         }
 
         async function render() {
@@ -84,12 +113,16 @@
             //     primary action; a secondary "make this a sub-task" link sits beneath
             //     it so the two operations don't compete at equal weight.
             const isOrphanLeaf = !parentId && !childIds.length;
+            const siblingNav = document.getElementById('sibling-nav');
+            const siblingPrev = document.getElementById('sibling-prev');
+            const siblingNext = document.getElementById('sibling-next');
             if (isOrphanLeaf) {
                 parentLine.style.display = 'none';
                 parentLineLabel.classList.remove('link');
                 parentLineLabel.onclick = null;
                 parentName.onclick = null;
                 parentAction.onclick = null;
+                siblingNav.style.display = 'none';
             } else if (parentId) {
                 const p = byId.get(parentId);
                 const pn = p ? p.name : '(unavailable)';
@@ -107,6 +140,25 @@
                 parentAction.title = 'Pick a different parent for this card';
                 parentAction.onclick = openChangeParent;
                 parentLine.style.display = 'flex';
+
+                // Sibling nav: walk the parent's authoritative childIds order. Filter
+                // to siblings present on this board (otherwise t.navigate has no URL).
+                // Hide entirely when there are no other siblings — a lone child has
+                // nowhere to navigate to.
+                const siblingIds = (await SubtaskGraph.getChildIds(t, parentId))
+                    .filter((id) => byId.has(id));
+                const myIdx = siblingIds.indexOf(me.id);
+                if (myIdx === -1 || siblingIds.length < 2) {
+                    siblingNav.style.display = 'none';
+                    siblingPrev.onclick = null;
+                    siblingNext.onclick = null;
+                } else {
+                    siblingNav.style.display = '';
+                    const prevCard = myIdx > 0 ? byId.get(siblingIds[myIdx - 1]) : null;
+                    const nextCard = myIdx < siblingIds.length - 1 ? byId.get(siblingIds[myIdx + 1]) : null;
+                    setSiblingBtn(siblingPrev, prevCard, goToCard);
+                    setSiblingBtn(siblingNext, nextCard, goToCard);
+                }
             } else {
                 parentLine.classList.add('is-orphan');
                 parentLineLabel.style.display = 'none';
@@ -118,6 +170,7 @@
                 parentAction.title = 'Make this card a sub-task of another card';
                 parentAction.onclick = openChangeParent;
                 parentLine.style.display = 'flex';
+                siblingNav.style.display = 'none';
             }
 
             const container = document.getElementById('children');
