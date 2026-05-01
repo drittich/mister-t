@@ -135,32 +135,67 @@
             renderAttach('');
         }
 
+        let attaching = false;
         function renderAttach(query) {
             const list = document.getElementById('attach-list');
             list.innerHTML = '';
-            const q = query.toLowerCase();
-            const matches = allCards.filter((c) => !forbidden.has(c.id) && c.name.toLowerCase().includes(q));
+            const q = query.trim().toLowerCase();
+            const eligible = allCards.filter((c) => !forbidden.has(c.id));
+            const matches = q ? eligible.filter((c) => c.name.toLowerCase().includes(q)) : eligible;
             if (!matches.length) {
-                list.innerHTML = '<div class="empty">No cards match.</div>';
+                const msg = q
+                    ? 'No cards match "' + query.trim() + '".'
+                    : eligible.length === 0
+                        ? 'No other cards on this board to attach.'
+                        : 'No cards available.';
+                const empty = document.createElement('div');
+                empty.className = 'empty';
+                empty.textContent = msg;
+                list.appendChild(empty);
                 return;
             }
-            for (const c of matches.slice(0, 50)) {
+            const shown = matches.slice(0, 50);
+            for (const c of shown) {
                 const row = document.createElement('div');
                 row.className = 'row';
-                row.innerHTML = '<div class="name"></div>';
-                row.querySelector('.name').textContent = c.name;
-                row.addEventListener('click', async () => {
+                row.setAttribute('role', 'button');
+                row.setAttribute('tabindex', '0');
+                row.title = c.name;
+                const nameEl = document.createElement('div');
+                nameEl.className = 'name';
+                nameEl.textContent = c.name;
+                row.appendChild(nameEl);
+                const pick = async () => {
+                    if (attaching) return;
+                    attaching = true;
+                    row.style.opacity = '0.5';
                     const errEl = document.getElementById('attach-error');
                     errEl.style.display = 'none';
                     try {
                         await SubtaskGraph.setParent(t, c.id, currentCardId);
                         await t.closePopup();
                     } catch (e) {
+                        attaching = false;
+                        row.style.opacity = '';
                         errEl.textContent = e.message || String(e);
                         errEl.style.display = 'block';
                     }
+                };
+                row.addEventListener('click', pick);
+                row.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        pick();
+                    }
                 });
                 list.appendChild(row);
+            }
+            if (matches.length > shown.length) {
+                const more = document.createElement('div');
+                more.className = 'muted';
+                more.style.padding = '6px 4px';
+                more.textContent = 'Showing ' + shown.length + ' of ' + matches.length + ' — keep typing to narrow.';
+                list.appendChild(more);
             }
         }
 

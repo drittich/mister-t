@@ -43,7 +43,10 @@
             const parentId = await SubtaskGraph.getParentId(t, currentCardId);
             if (parentId) {
                 const p = allCards.find((c) => c.id === parentId);
-                document.getElementById('current-parent-name').textContent = p ? p.name : '(card not on this board)';
+                const pn = p ? p.name : '(card not on this board)';
+                const cpName = document.getElementById('current-parent-name');
+                cpName.textContent = pn;
+                cpName.title = pn;
                 document.getElementById('current-parent').style.display = 'flex';
             } else {
                 document.getElementById('detach-btn').disabled = true;
@@ -54,32 +57,66 @@
             t.sizeTo('body');
         }
 
+        let picking = false;
         function render(query) {
             const list = document.getElementById('list');
             list.innerHTML = '';
-            const q = query.toLowerCase();
-            const matches = allCards.filter((c) => !forbidden.has(c.id) && c.name.toLowerCase().includes(q));
+            const q = query.trim().toLowerCase();
+            const eligible = allCards.filter((c) => !forbidden.has(c.id));
+            const matches = q ? eligible.filter((c) => c.name.toLowerCase().includes(q)) : eligible;
             if (!matches.length) {
-                list.innerHTML = '<div class="empty">No cards match.</div>';
+                const msg = q
+                    ? 'No cards match "' + query.trim() + '".'
+                    : eligible.length === 0
+                        ? 'No eligible parent cards on this board.'
+                        : 'No cards available.';
+                const empty = document.createElement('div');
+                empty.className = 'empty';
+                empty.textContent = msg;
+                list.appendChild(empty);
                 return;
             }
-            for (const c of matches.slice(0, 50)) {
+            const shown = matches.slice(0, 50);
+            for (const c of shown) {
                 const row = document.createElement('div');
                 row.className = 'row';
-                row.innerHTML = '<div class="name"></div>';
-                row.querySelector('.name').textContent = c.name;
-                row.addEventListener('click', () => pickParent(c.id));
+                row.setAttribute('role', 'button');
+                row.setAttribute('tabindex', '0');
+                row.title = c.name;
+                const nameEl = document.createElement('div');
+                nameEl.className = 'name';
+                nameEl.textContent = c.name;
+                row.appendChild(nameEl);
+                row.addEventListener('click', () => pickParent(c.id, row));
+                row.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        pickParent(c.id, row);
+                    }
+                });
                 list.appendChild(row);
+            }
+            if (matches.length > shown.length) {
+                const more = document.createElement('div');
+                more.className = 'muted';
+                more.style.padding = '6px 4px';
+                more.textContent = 'Showing ' + shown.length + ' of ' + matches.length + ' — keep typing to narrow.';
+                list.appendChild(more);
             }
         }
 
-        async function pickParent(newParentId) {
+        async function pickParent(newParentId, rowEl) {
+            if (picking) return;
+            picking = true;
+            if (rowEl) rowEl.style.opacity = '0.5';
             const errEl = document.getElementById('error');
             errEl.style.display = 'none';
             try {
                 await SubtaskGraph.setParent(t, currentCardId, newParentId);
                 await t.closePopup();
             } catch (e) {
+                picking = false;
+                if (rowEl) rowEl.style.opacity = '';
                 errEl.textContent = e.message || String(e);
                 errEl.style.display = 'block';
             }
@@ -88,12 +125,19 @@
         document.getElementById('search').addEventListener('input', (e) => render(e.target.value));
 
         document.getElementById('detach-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('detach-btn');
+            if (btn.disabled) return;
             const errEl = document.getElementById('error');
             errEl.style.display = 'none';
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Detaching…';
             try {
                 await SubtaskGraph.setParent(t, currentCardId, null);
                 await t.closePopup();
             } catch (e) {
+                btn.disabled = false;
+                btn.textContent = originalText;
                 errEl.textContent = e.message || String(e);
                 errEl.style.display = 'block';
             }
