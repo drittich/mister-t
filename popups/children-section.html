@@ -17,7 +17,7 @@
 
     <div id="children"></div>
 
-    <div class="actions">
+    <div class="actions" id="add-row">
         <span class="link" id="add-link">+ Add sub-task</span>
     </div>
 
@@ -49,10 +49,48 @@
             // Children
             const childIds = await SubtaskGraph.getChildIds(t, me.id);
             const container = document.getElementById('children');
+            const addRow = document.getElementById('add-row');
             container.innerHTML = '';
             if (!childIds.length) {
-                container.innerHTML = '<div class="empty">No sub-tasks yet.</div>';
+                // The empty state IS the call-to-action — one block, action-forward.
+                // Copy adapts to whether this card is itself a sub-task: leaf nodes
+                // skip the concept framing since the user already understands it.
+                const block = document.createElement('div');
+                block.className = 'empty-cta';
+
+                const headline = document.createElement('div');
+                headline.className = 'empty-cta-headline';
+                headline.textContent = parentId
+                    ? 'Add a sub-task.'
+                    : 'Break this card into sub-tasks.';
+                block.appendChild(headline);
+
+                if (!parentId) {
+                    const desc = document.createElement('div');
+                    desc.className = 'empty-cta-desc';
+                    desc.textContent = 'Track smaller pieces of work that roll up to this card.';
+                    block.appendChild(desc);
+                }
+
+                const cta = document.createElement('button');
+                cta.type = 'button';
+                cta.className = 'empty-cta-button';
+                cta.textContent = 'Add sub-task';
+                cta.addEventListener('click', (e) => {
+                    t.popup({
+                        title: 'Add sub-task',
+                        url: 'add-subtask.html',
+                        height: 280,
+                        mouseEvent: e,
+                    });
+                });
+                block.appendChild(cta);
+
+                container.appendChild(block);
+                // Hide the bottom link to avoid two CTAs for the same action.
+                addRow.style.display = 'none';
             } else {
+                addRow.style.display = '';
                 for (const childId of childIds) {
                     const c = byId.get(childId);
                     const displayName = c ? c.name : '(card not on this board)';
