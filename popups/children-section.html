@@ -29,8 +29,21 @@
 
         async function render() {
             const me = await t.card('id');
-            const allCards = await t.cards('id', 'name');
+            // `url` is requested so child/parent clicks can use t.navigate() — t.showCard()
+            // does not refresh card-back-section iframes (the iframe stays bound to its
+            // original card), which would leave this section showing the wrong card's
+            // sub-tasks after navigation.
+            const allCards = await t.cards('id', 'name', 'url');
             const byId = new Map(allCards.map((c) => [c.id, c]));
+            const goToCard = (card) => {
+                if (!card) return;
+                if (card.url) {
+                    t.navigate({ url: card.url });
+                } else {
+                    // Fallback if the platform ever stops surfacing url on t.cards()
+                    t.showCard(card.id);
+                }
+            };
 
             // Parent line — visible in both states. With a parent: shows
             // "Parent: <name>  Change". Without: shows "+ Set parent…".
@@ -53,18 +66,26 @@
                 const p = byId.get(parentId);
                 const pn = p ? p.name : '(unavailable)';
                 parentLine.classList.remove('is-orphan');
-                parentLineLabel.textContent = 'Parent:';
+                // The label and the name share the same click target so the whole
+                // left side reads as one navigation control. The ↑ arrow hints at
+                // navigation; the link styling on both pieces does the rest.
+                parentLineLabel.textContent = '↑ Parent:';
                 parentLineLabel.style.display = '';
+                parentLineLabel.classList.add('link');
+                parentLineLabel.title = 'Open ' + pn;
+                parentLineLabel.onclick = () => goToCard(p);
                 parentName.textContent = pn;
-                parentName.title = pn;
+                parentName.title = 'Open ' + pn;
                 parentName.style.display = '';
-                parentName.onclick = () => p && t.showCard(p.id);
+                parentName.onclick = () => goToCard(p);
                 parentAction.textContent = 'Change';
                 parentAction.title = 'Pick a different parent for this card';
             } else {
                 // No parent yet — slot is now a single "Set parent…" affordance.
                 parentLine.classList.add('is-orphan');
                 parentLineLabel.style.display = 'none';
+                parentLineLabel.classList.remove('link');
+                parentLineLabel.onclick = null;
                 parentName.style.display = 'none';
                 parentName.onclick = null;
                 parentAction.textContent = '+ Set parent…';
@@ -127,7 +148,7 @@
                     name.className = 'name';
                     name.textContent = displayName;
                     name.title = displayName; // long names truncate; reveal full on hover
-                    if (c) name.addEventListener('click', () => t.showCard(c.id));
+                    if (c) name.addEventListener('click', () => goToCard(c));
 
                     // Action area swaps between three states:
                     //   1. idle:    "× detach"

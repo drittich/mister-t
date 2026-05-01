@@ -79,7 +79,15 @@
                     title: 'Parent',
                     text: 'View',
                     color: null,
-                    callback: function (t) {
+                    callback: async function (t) {
+                        // t.navigate() (not t.showCard()) so the card-back-section
+                        // iframe is rebuilt for the parent — t.showCard leaves it
+                        // bound to the original card and the sub-task list goes stale.
+                        const cards = await t.cards('id', 'url');
+                        const target = cards.find((c) => c.id === parentId);
+                        if (target && target.url) {
+                            return t.navigate({ url: target.url });
+                        }
                         return t.showCard(parentId);
                     },
                 });
