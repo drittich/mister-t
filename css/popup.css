@@ -88,7 +88,7 @@ input[type="text"], select {
     color: var(--ds-text, var(--popup-fb-text));
     border: 1px solid var(--ds-border-input, var(--popup-fb-border-input));
     border-radius: var(--ds-radius-small, 3px);
-    font-size: 14px;
+    font: var(--ds-font-body, normal 400 0.875rem/1.25rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     outline: none;
 }
 input[type="text"]:focus, select:focus {
@@ -102,7 +102,7 @@ button {
     border: 0;
     padding: 8px 14px;
     border-radius: var(--ds-radius-small, 3px);
-    font-size: 14px;
+    font: var(--ds-font-body, normal 400 0.875rem/1.25rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     font-weight: var(--ds-font-weight-medium, 500);
     cursor: pointer;
     /* Allow buttons to grow with translated labels (German etc.) */
@@ -148,7 +148,7 @@ button:disabled { opacity: var(--ds-opacity-disabled, 0.4); cursor: not-allowed;
 }
 .row .meta {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
-    font-size: 12px;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     flex-shrink: 0;
 }
 
@@ -162,12 +162,12 @@ button:disabled { opacity: var(--ds-opacity-disabled, 0.4); cursor: not-allowed;
 .error {
     color: var(--ds-text-danger, var(--popup-fb-text-danger));
     margin-top: 8px;
-    font-size: 13px;
+    font: var(--ds-font-body, normal 400 0.875rem/1.25rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     overflow-wrap: break-word;
 }
 .muted {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
-    font-size: 12px;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
 }
 
 .actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -197,7 +197,7 @@ a:focus-visible, .link:focus-visible {
 }
 .parent-line .label {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
-    font-size: 12px;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     flex-shrink: 0;
 }
 .parent-line .link {
@@ -230,7 +230,7 @@ a:focus-visible, .link:focus-visible {
 }
 .child-row .detach {
     color: var(--ds-text-subtle, var(--popup-fb-text-subtle));
-    font-size: 12px;
+    font: var(--ds-font-body-small, normal 400 0.75rem/1rem "Atlassian Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Ubuntu, "Helvetica Neue", sans-serif);
     cursor: pointer;
     flex-shrink: 0;
     padding: 2px 6px;
