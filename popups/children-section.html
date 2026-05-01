@@ -63,38 +63,163 @@
                     name.textContent = displayName;
                     name.title = displayName; // long names truncate; reveal full on hover
                     if (c) name.addEventListener('click', () => t.showCard(c.id));
-                    const detach = document.createElement('span');
-                    detach.className = 'detach';
-                    detach.textContent = '× detach';
-                    detach.title = 'Remove this sub-task relationship';
-                    detach.setAttribute('role', 'button');
-                    detach.setAttribute('tabindex', '0');
-                    detach.setAttribute('aria-label', 'Remove sub-task ' + displayName);
-                    let detaching = false;
-                    const doDetach = async () => {
-                        if (detaching) return;
-                        detaching = true;
-                        detach.style.opacity = '0.5';
-                        detach.style.pointerEvents = 'none';
-                        try {
-                            await SubtaskGraph.setParent(t, childId, null);
-                            await render();
-                        } catch (e) {
-                            detaching = false;
-                            detach.style.opacity = '';
-                            detach.style.pointerEvents = '';
-                            alert(e.message || String(e));
+
+                    // Action area swaps between three states:
+                    //   1. idle:    "× detach"
+                    //   2. confirm: "Detach? [Yes] [Cancel]"
+                    //   3. error:   "Couldn't detach. [Retry] [Dismiss]"
+                    // A single click on "× detach" only opens the confirm — never destroys.
+                    const action = document.createElement('span');
+                    action.className = 'detach-action';
+                    row.appendChild(name);
+                    row.appendChild(action);
+
+                    let confirmTimer = null;
+                    const clearConfirmTimer = () => {
+                        if (confirmTimer) {
+                            clearTimeout(confirmTimer);
+                            confirmTimer = null;
                         }
                     };
-                    detach.addEventListener('click', doDetach);
-                    detach.addEventListener('keydown', (ev) => {
-                        if (ev.key === 'Enter' || ev.key === ' ') {
-                            ev.preventDefault();
-                            doDetach();
-                        }
-                    });
-                    row.appendChild(name);
-                    row.appendChild(detach);
+
+                    const renderIdle = () => {
+                        clearConfirmTimer();
+                        action.innerHTML = '';
+                        action.removeAttribute('role');
+                        action.removeAttribute('aria-label');
+                        const btn = document.createElement('span');
+                        btn.className = 'detach';
+                        btn.textContent = '× detach';
+                        btn.title = 'Remove this sub-task relationship';
+                        btn.setAttribute('role', 'button');
+                        btn.setAttribute('tabindex', '0');
+                        btn.setAttribute('aria-label', 'Remove sub-task ' + displayName);
+                        const open = () => renderConfirm();
+                        btn.addEventListener('click', open);
+                        btn.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                                ev.preventDefault();
+                                open();
+                            }
+                        });
+                        action.appendChild(btn);
+                    };
+
+                    const renderConfirm = () => {
+                        action.innerHTML = '';
+                        action.setAttribute('role', 'group');
+                        action.setAttribute('aria-label', 'Confirm detach ' + displayName);
+
+                        const prompt = document.createElement('span');
+                        prompt.className = 'muted';
+                        prompt.textContent = 'Detach?';
+                        prompt.style.marginRight = '4px';
+
+                        const yes = document.createElement('span');
+                        yes.className = 'detach detach-confirm';
+                        yes.textContent = 'Yes';
+                        yes.setAttribute('role', 'button');
+                        yes.setAttribute('tabindex', '0');
+                        yes.setAttribute('aria-label', 'Confirm detach ' + displayName);
+
+                        const no = document.createElement('span');
+                        no.className = 'detach detach-cancel';
+                        no.textContent = 'Cancel';
+                        no.setAttribute('role', 'button');
+                        no.setAttribute('tabindex', '0');
+                        no.setAttribute('aria-label', 'Cancel detach');
+
+                        const cancel = () => renderIdle();
+                        no.addEventListener('click', cancel);
+                        no.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Escape') {
+                                ev.preventDefault();
+                                cancel();
+                            }
+                        });
+
+                        let confirming = false;
+                        const confirm = async () => {
+                            if (confirming) return;
+                            confirming = true;
+                            clearConfirmTimer();
+                            yes.style.opacity = '0.5';
+                            yes.style.pointerEvents = 'none';
+                            no.style.pointerEvents = 'none';
+                            try {
+                                await SubtaskGraph.setParent(t, childId, null);
+                                // Successful detach triggers t.render() elsewhere, which re-runs
+                                // render() above. No need to re-render here ourselves.
+                            } catch (e) {
+                                confirming = false;
+                                renderError(e.message || String(e));
+                            }
+                        };
+                        yes.addEventListener('click', confirm);
+                        yes.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                                ev.preventDefault();
+                                confirm();
+                            } else if (ev.key === 'Escape') {
+                                ev.preventDefault();
+                                cancel();
+                            }
+                        });
+
+                        action.appendChild(prompt);
+                        action.appendChild(yes);
+                        action.appendChild(no);
+                        // Move keyboard focus to Cancel — the safe default.
+                        no.focus();
+
+                        // Auto-revert after 8s of inactivity. Stops a forgotten confirm
+                        // from sitting there indefinitely if the user navigates away mentally.
+                        clearConfirmTimer();
+                        confirmTimer = setTimeout(() => renderIdle(), 8000);
+                    };
+
+                    const renderError = (msg) => {
+                        action.innerHTML = '';
+                        action.removeAttribute('role');
+                        action.removeAttribute('aria-label');
+                        const errSpan = document.createElement('span');
+                        errSpan.className = 'detach detach-error-msg';
+                        errSpan.textContent = "Couldn't detach.";
+                        errSpan.title = msg;
+
+                        const retry = document.createElement('span');
+                        retry.className = 'detach detach-retry';
+                        retry.textContent = 'Retry';
+                        retry.setAttribute('role', 'button');
+                        retry.setAttribute('tabindex', '0');
+
+                        const dismiss = document.createElement('span');
+                        dismiss.className = 'detach detach-cancel';
+                        dismiss.textContent = 'Dismiss';
+                        dismiss.setAttribute('role', 'button');
+                        dismiss.setAttribute('tabindex', '0');
+
+                        retry.addEventListener('click', () => renderConfirm());
+                        retry.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                                ev.preventDefault();
+                                renderConfirm();
+                            }
+                        });
+                        dismiss.addEventListener('click', () => renderIdle());
+                        dismiss.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                                ev.preventDefault();
+                                renderIdle();
+                            }
+                        });
+
+                        action.appendChild(errSpan);
+                        action.appendChild(retry);
+                        action.appendChild(dismiss);
+                    };
+
+                    renderIdle();
                     container.appendChild(row);
                 }
             }
