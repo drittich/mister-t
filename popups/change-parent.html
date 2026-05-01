@@ -41,6 +41,8 @@
             allCards = await t.cards('id', 'name');
 
             const parentId = await SubtaskGraph.getParentId(t, currentCardId);
+            const searchLabel = document.querySelector('label[for="search"]');
+            const detachBtn = document.getElementById('detach-btn');
             if (parentId) {
                 const p = allCards.find((c) => c.id === parentId);
                 const pn = p ? p.name : '(card not on this board)';
@@ -48,9 +50,13 @@
                 cpName.textContent = pn;
                 cpName.title = pn;
                 document.getElementById('current-parent').style.display = 'flex';
+                searchLabel.textContent = 'Pick a new parent';
             } else {
-                document.getElementById('detach-btn').disabled = true;
-                document.getElementById('detach-btn').textContent = 'Already has no parent';
+                // No parent yet — this popup is doing "Set parent", not "Change".
+                // Hide the detach action (nothing to detach from), and adjust
+                // the search label to match.
+                detachBtn.style.display = 'none';
+                searchLabel.textContent = 'Pick a parent';
             }
 
             render('');

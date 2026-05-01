@@ -10,9 +10,10 @@
     </style>
 </head>
 <body>
-    <div id="parent-line" class="parent-line" style="display:none;">
-        <span class="label">Parent:</span>
+    <div id="parent-line" class="parent-line">
+        <span class="label" id="parent-line-label">Parent:</span>
         <span class="link" id="parent-name"></span>
+        <span class="link parent-line-action" id="parent-action"></span>
     </div>
 
     <div id="children"></div>
@@ -31,20 +32,46 @@
             const allCards = await t.cards('id', 'name');
             const byId = new Map(allCards.map((c) => [c.id, c]));
 
-            // Parent line
+            // Parent line — visible in both states. With a parent: shows
+            // "Parent: <name>  Change". Without: shows "+ Set parent…".
+            // The Change/Set-parent link fills the discoverability gap left by
+            // Trello's new card-back UI hiding card-buttons behind the rocket icon.
             const parentId = await SubtaskGraph.getParentId(t, me.id);
             const parentLine = document.getElementById('parent-line');
+            const parentLineLabel = document.getElementById('parent-line-label');
             const parentName = document.getElementById('parent-name');
+            const parentAction = document.getElementById('parent-action');
+            const openChangeParent = (e) => {
+                t.popup({
+                    title: parentId ? 'Change parent' : 'Set parent',
+                    url: 'change-parent.html',
+                    height: 320,
+                    mouseEvent: e,
+                });
+            };
             if (parentId) {
                 const p = byId.get(parentId);
                 const pn = p ? p.name : '(unavailable)';
+                parentLine.classList.remove('is-orphan');
+                parentLineLabel.textContent = 'Parent:';
+                parentLineLabel.style.display = '';
                 parentName.textContent = pn;
                 parentName.title = pn;
+                parentName.style.display = '';
                 parentName.onclick = () => p && t.showCard(p.id);
-                parentLine.style.display = 'flex';
+                parentAction.textContent = 'Change';
+                parentAction.title = 'Pick a different parent for this card';
             } else {
-                parentLine.style.display = 'none';
+                // No parent yet — slot is now a single "Set parent…" affordance.
+                parentLine.classList.add('is-orphan');
+                parentLineLabel.style.display = 'none';
+                parentName.style.display = 'none';
+                parentName.onclick = null;
+                parentAction.textContent = '+ Set parent…';
+                parentAction.title = 'Make this card a sub-task of another card';
             }
+            parentAction.onclick = openChangeParent;
+            parentLine.style.display = 'flex';
 
             // Children
             const childIds = await SubtaskGraph.getChildIds(t, me.id);
