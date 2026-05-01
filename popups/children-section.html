@@ -79,11 +79,12 @@
             t.sizeTo('body');
         }
 
-        document.getElementById('add-link').addEventListener('click', () => {
+        document.getElementById('add-link').addEventListener('click', (e) => {
             t.popup({
                 title: 'Add sub-task',
                 url: 'add-subtask.html',
                 height: 280,
+                mouseEvent: e,
             });
         });
 
