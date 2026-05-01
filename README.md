@@ -1,8 +1,7 @@
 # Mister-T
 
 A Trello Power-Up that adds parent/child sub-task
-relationships to cards (any depth). Static files only — host on GitHub Pages,
-register against your workspace, never publish to the Trello directory.
+relationships to cards (any depth). 
 
 ## Features
 
