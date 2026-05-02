@@ -51,6 +51,22 @@
             });
         });
 
+        // Esc anywhere closes the popup. Productivity audience expects it.
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                t.closePopup();
+            }
+        });
+
+        // Enter in the name field submits — same as clicking Create.
+        document.getElementById('new-name').addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                document.getElementById('create-btn').click();
+            }
+        });
+
         // ---- Create new ----
         async function loadLists() {
             // Independent calls — fire in parallel so we wait one round-trip
@@ -217,6 +233,16 @@
 
         document.getElementById('attach-search').addEventListener('input', (e) => {
             renderAttach(e.target.value);
+        });
+
+        // Enter in the search picks the first visible result — keyboard-first
+        // attach without requiring a click.
+        document.getElementById('attach-search').addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                const firstRow = document.querySelector('#attach-list .row');
+                if (firstRow) firstRow.click();
+            }
         });
 
         // Initial load (lists for create, cards for attach)

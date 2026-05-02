@@ -16,6 +16,17 @@
         <button id="run-btn" class="grow">Rebuild now</button>
     </div>
     <div class="muted" id="progress" style="display:none; margin-top:8px;"></div>
+    <div class="progress-track" id="progress-track" style="display:none;">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="result-line" id="result-line" style="display:none;">
+        <span class="result-check" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 13l4 4L19 7" />
+            </svg>
+        </span>
+        <span id="result-text"></span>
+    </div>
     <div class="error" id="error" style="display:none;"></div>
 
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
@@ -23,27 +34,52 @@
     <script>
         const t = TrelloPowerUp.iframe();
 
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                t.closePopup();
+            }
+        });
+
         document.getElementById('run-btn').addEventListener('click', async () => {
             const btn = document.getElementById('run-btn');
             const progress = document.getElementById('progress');
+            const track = document.getElementById('progress-track');
+            const fill = document.getElementById('progress-fill');
+            const resultLine = document.getElementById('result-line');
+            const resultText = document.getElementById('result-text');
             const errEl = document.getElementById('error');
             errEl.style.display = 'none';
+            resultLine.style.display = 'none';
             btn.disabled = true;
             btn.textContent = 'Rebuilding…';
             progress.style.display = 'block';
+            track.style.display = 'block';
+            fill.style.width = '0%';
             try {
                 const result = await SubtaskGraph.rebuildIndex(t, (done, total) => {
                     progress.textContent = 'Scanning ' + done + ' / ' + total + ' cards…';
+                    fill.style.width = (total ? (done / total) * 100 : 0) + '%';
                 });
-                progress.textContent = 'Done. Scanned ' + result.scanned + ' cards, updated ' + result.parentsUpdated + ' parents.';
+                fill.style.width = '100%';
+                progress.style.display = 'none';
+                track.style.display = 'none';
+                // Build the result line so the check redraws every time
+                // (forcing a node replace restarts the keyframe).
+                resultText.textContent = result.scanned + ' cards scanned, ' + result.parentsUpdated + ' parents updated.';
+                resultLine.style.display = 'flex';
                 btn.textContent = 'Close';
                 btn.disabled = false;
                 btn.onclick = () => t.closePopup();
+                t.sizeTo('body');
             } catch (e) {
+                progress.style.display = 'none';
+                track.style.display = 'none';
                 errEl.textContent = e.message || String(e);
                 errEl.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Rebuild now';
+                t.sizeTo('body');
             }
         });
     </script>

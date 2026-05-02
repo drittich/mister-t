@@ -39,6 +39,12 @@
         let pendingUndo = null; // { childId, parentId, name, expiresAt }
         let undoTimer = null;
 
+        // Tracks the last set of childIds we rendered. Anything we see on the
+        // current render that wasn't in the previous set is freshly added —
+        // gets a one-time highlight pulse. `null` on first render means we
+        // skip the pulse (first paint isn't "new," it's just the initial state).
+        let lastChildIds = null;
+
         function clearUndo() {
             pendingUndo = null;
             if (undoTimer) {
@@ -47,7 +53,12 @@
             }
         }
 
-        function setSiblingBtn(btn, card, goToCard) {
+        // Stashed sibling targets so the Alt+arrow keyboard shortcuts can fire
+        // regardless of which element has focus inside the iframe.
+        let siblingPrevTarget = null;
+        let siblingNextTarget = null;
+
+        function setSiblingBtn(btn, card, goToCard, isPrev) {
             // Disabled state when at an end of the sibling list — keep the button
             // visible so the user sees the boundary, but make it inert.
             if (!card) {
@@ -57,12 +68,14 @@
                 btn.title = '';
                 btn.onclick = null;
                 btn.onkeydown = null;
+                if (isPrev) siblingPrevTarget = null; else siblingNextTarget = null;
                 return;
             }
             btn.classList.remove('is-disabled');
             btn.setAttribute('tabindex', '0');
             btn.removeAttribute('aria-disabled');
-            btn.title = 'Open ' + card.name;
+            const shortcut = isPrev ? ' (Alt+←)' : ' (Alt+→)';
+            btn.title = 'Open ' + card.name + shortcut;
             btn.onclick = () => goToCard(card);
             btn.onkeydown = (ev) => {
                 if (ev.key === 'Enter' || ev.key === ' ') {
@@ -70,7 +83,23 @@
                     goToCard(card);
                 }
             };
+            if (isPrev) siblingPrevTarget = { card, goToCard };
+            else siblingNextTarget = { card, goToCard };
         }
+
+        // Alt+← / Alt+→ jump to prev/next sibling. Bound once at module
+        // load — handlers read the current targets from the closure above, which
+        // each render() updates via setSiblingBtn.
+        document.addEventListener('keydown', (ev) => {
+            if (!ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+            if (ev.key === 'ArrowLeft' && siblingPrevTarget) {
+                ev.preventDefault();
+                siblingPrevTarget.goToCard(siblingPrevTarget.card);
+            } else if (ev.key === 'ArrowRight' && siblingNextTarget) {
+                ev.preventDefault();
+                siblingNextTarget.goToCard(siblingNextTarget.card);
+            }
+        });
 
         async function render() {
             const me = await t.card('id');
@@ -127,6 +156,8 @@
                 parentName.onclick = null;
                 parentAction.onclick = null;
                 siblingNav.style.display = 'none';
+                siblingPrevTarget = null;
+                siblingNextTarget = null;
             } else if (parentId) {
                 const p = byId.get(parentId);
                 const pn = p ? p.name : '(unavailable)';
@@ -156,12 +187,14 @@
                     siblingNav.style.display = 'none';
                     siblingPrev.onclick = null;
                     siblingNext.onclick = null;
+                    siblingPrevTarget = null;
+                    siblingNextTarget = null;
                 } else {
                     siblingNav.style.display = '';
                     const prevCard = myIdx > 0 ? byId.get(siblingIds[myIdx - 1]) : null;
                     const nextCard = myIdx < siblingIds.length - 1 ? byId.get(siblingIds[myIdx + 1]) : null;
-                    setSiblingBtn(siblingPrev, prevCard, goToCard);
-                    setSiblingBtn(siblingNext, nextCard, goToCard);
+                    setSiblingBtn(siblingPrev, prevCard, goToCard, true);
+                    setSiblingBtn(siblingNext, nextCard, goToCard, false);
                 }
             } else {
                 parentLine.classList.add('is-orphan');
@@ -175,6 +208,8 @@
                 parentAction.onclick = openChangeParent;
                 parentLine.style.display = 'flex';
                 siblingNav.style.display = 'none';
+                siblingPrevTarget = null;
+                siblingNextTarget = null;
             }
 
             const container = document.getElementById('children');
@@ -188,6 +223,15 @@
                 // is itself a sub-task — leaf nodes already understand the concept.
                 const block = document.createElement('div');
                 block.className = 'empty-cta';
+
+                // Muted glyph above the headline — reinforces the section's identity
+                // without the noise of a full illustration. Inline SVG (not <img>) so
+                // currentColor + opacity track the theme tokens.
+                const glyph = document.createElement('div');
+                glyph.className = 'empty-cta-glyph';
+                glyph.setAttribute('aria-hidden', 'true');
+                glyph.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v10a3 3 0 0 0 3 3h11"/><rect x="14" y="13" width="6" height="8" rx="1"/><rect x="3" y="2" width="6" height="4" rx="1"/></svg>';
+                block.appendChild(glyph);
 
                 const headline = document.createElement('div');
                 headline.className = 'empty-cta-headline';
@@ -231,11 +275,25 @@
                 addRow.style.display = 'none';
             } else {
                 addRow.style.display = '';
+                // Fresh ids are anything in the new list that wasn't in the
+                // previous one. Skip on first render — those rows aren't "new,"
+                // they're just the initial state.
+                const freshIds = lastChildIds === null
+                    ? new Set()
+                    : new Set(childIds.filter((id) => !lastChildIds.has(id)));
                 for (const childId of childIds) {
                     const c = byId.get(childId);
                     const displayName = c ? c.name : '(card not on this board)';
                     const row = document.createElement('div');
                     row.className = 'child-row';
+                    if (freshIds.has(childId)) {
+                        row.classList.add('is-fresh');
+                        // Strip the class after the animation so a later
+                        // re-render doesn't replay it on the same row.
+                        row.addEventListener('animationend', () => {
+                            row.classList.remove('is-fresh');
+                        }, { once: true });
+                    }
                     const name = document.createElement('div');
                     name.className = 'name';
                     name.textContent = displayName;
@@ -257,6 +315,10 @@
                         if (detach.dataset.busy === '1') return;
                         detach.dataset.busy = '1';
                         detach.style.opacity = '0.5';
+                        // Collapse animation tells the eye where the row went —
+                        // the undo strip then slides into the space it left.
+                        // Reduced-motion users skip the wait via the media query.
+                        row.classList.add('is-detaching');
                         try {
                             await SubtaskGraph.setParent(t, childId, null);
                             // Stash the undo opportunity so it survives the t.render()
@@ -271,6 +333,7 @@
                         } catch (e) {
                             detach.dataset.busy = '';
                             detach.style.opacity = '';
+                            row.classList.remove('is-detaching');
                             renderErrorStrip(e.message || String(e), () => doDetach());
                         }
                     };
@@ -296,6 +359,9 @@
             } else if (pendingUndo) {
                 clearUndo();
             }
+
+            // Snapshot for the next render so we can detect newly-added rows.
+            lastChildIds = new Set(childIds);
 
             t.sizeTo('body');
         }

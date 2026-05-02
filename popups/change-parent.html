@@ -156,6 +156,21 @@
 
         document.getElementById('search').addEventListener('input', (e) => render(e.target.value));
 
+        // Esc closes the popup; Enter picks the first visible candidate.
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                t.closePopup();
+            }
+        });
+        document.getElementById('search').addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                const firstRow = document.querySelector('#list .row');
+                if (firstRow) firstRow.click();
+            }
+        });
+
         document.getElementById('detach-btn').addEventListener('click', async () => {
             const btn = document.getElementById('detach-btn');
             if (btn.dataset.busy === '1') return;
