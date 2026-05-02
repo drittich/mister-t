@@ -47,6 +47,12 @@
                 document.querySelectorAll('.panel').forEach((x) => x.classList.remove('active'));
                 el.classList.add('active');
                 document.getElementById('panel-' + el.dataset.tab).classList.add('active');
+                // Move focus to the newly-revealed panel's primary input so the
+                // user can start typing immediately after switching tabs.
+                const focusTarget = el.dataset.tab === 'create'
+                    ? document.getElementById('new-name')
+                    : document.getElementById('attach-search');
+                focusTarget.focus();
                 t.sizeTo('body');
             });
         });
@@ -247,6 +253,14 @@
 
         // Initial load (lists for create, cards for attach)
         Promise.all([loadLists(), loadAttachable()]).then(() => t.sizeTo('body'));
+
+        // autofocus alone doesn't reliably take in Trello's popup iframe — the
+        // iframe finishes loading before the popup is visible/focused, so the
+        // initial focus gets dropped. Explicitly focus once on load and again
+        // on the next frame to land after the popup's own focus management.
+        const newNameInput = document.getElementById('new-name');
+        newNameInput.focus();
+        requestAnimationFrame(() => newNameInput.focus());
     </script>
 </body>
 </html>

@@ -195,6 +195,14 @@
         });
 
         load();
+
+        // autofocus alone doesn't reliably take in Trello's popup iframe — the
+        // iframe finishes loading before the popup is visible/focused, so the
+        // initial focus gets dropped. Explicitly focus once on load and again
+        // on the next frame to land after the popup's own focus management.
+        const searchInput = document.getElementById('search');
+        searchInput.focus();
+        requestAnimationFrame(() => searchInput.focus());
     </script>
 </body>
 </html>
