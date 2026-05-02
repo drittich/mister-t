@@ -218,7 +218,12 @@
             container.innerHTML = '';
             undoSlot.innerHTML = '';
 
-            if (!childIds.length) {
+            // Visible children: skip ones that aren't reachable here (archived
+            // or moved to another board). The relationship still exists in
+            // pluginData; /rebuild surfaces it for cleanup.
+            const visibleChildIds = childIds.filter((id) => byId.has(id));
+
+            if (!visibleChildIds.length) {
                 // Empty state IS the call-to-action. Copy adapts to whether the card
                 // is itself a sub-task — leaf nodes already understand the concept.
                 const block = document.createElement('div');
@@ -280,10 +285,10 @@
                 // they're just the initial state.
                 const freshIds = lastChildIds === null
                     ? new Set()
-                    : new Set(childIds.filter((id) => !lastChildIds.has(id)));
-                for (const childId of childIds) {
+                    : new Set(visibleChildIds.filter((id) => !lastChildIds.has(id)));
+                for (const childId of visibleChildIds) {
                     const c = byId.get(childId);
-                    const displayName = c ? c.name : '(card not on this board)';
+                    const displayName = c.name;
                     const row = document.createElement('div');
                     row.className = 'child-row';
                     if (freshIds.has(childId)) {
@@ -298,7 +303,7 @@
                     name.className = 'name';
                     name.textContent = displayName;
                     name.title = displayName;
-                    if (c) name.addEventListener('click', () => goToCard(c));
+                    name.addEventListener('click', () => goToCard(c));
 
                     // One-click detach. Reversible via the undo strip below the list,
                     // so no inline confirm — match the weight of the action to its
@@ -361,7 +366,8 @@
             }
 
             // Snapshot for the next render so we can detect newly-added rows.
-            lastChildIds = new Set(childIds);
+            // Tracks the *visible* set so unarchiving a child triggers the pulse.
+            lastChildIds = new Set(visibleChildIds);
 
             t.sizeTo('body');
         }
