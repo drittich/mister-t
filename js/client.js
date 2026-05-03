@@ -5,6 +5,15 @@
     'use strict';
 
     const ICON = './icons/subtask.svg';
+    const PARENT_NAME_MAX = 40;
+
+    async function getParentName(t, parentId) {
+        const cards = await t.cards('id', 'name');
+        const parent = cards.find((c) => c.id === parentId);
+        if (!parent || !parent.name) return null;
+        const name = parent.name.trim();
+        return name.length > PARENT_NAME_MAX ? name.slice(0, PARENT_NAME_MAX - 1) + '…' : name;
+    }
 
     TrelloPowerUp.initialize({
         'card-buttons': function (t) {
@@ -58,7 +67,12 @@
                 });
             }
             if (parentId) {
-                badges.push({ text: 'sub-task', icon: ICON, color: null });
+                const parentName = await getParentName(t, parentId);
+                badges.push({
+                    text: parentName ? '↳ ' + parentName : 'sub-task',
+                    icon: ICON,
+                    color: null,
+                });
             }
             return badges;
         },
@@ -75,9 +89,10 @@
                 });
             }
             if (parentId) {
+                const parentName = await getParentName(t, parentId);
                 badges.push({
                     title: 'Parent',
-                    text: 'View',
+                    text: parentName || 'View',
                     color: null,
                     callback: async function (t) {
                         // t.navigate() (not t.showCard()) so the card-back-section
