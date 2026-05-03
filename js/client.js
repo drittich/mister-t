@@ -5,13 +5,16 @@
     'use strict';
 
     const ICON = './icons/subtask.svg';
-    const PARENT_NAME_MAX = 40;
+    const PARENT_NAME_MAX = 20;
 
     async function getParentName(t, parentId) {
         const cards = await t.cards('id', 'name');
         const parent = cards.find((c) => c.id === parentId);
         if (!parent || !parent.name) return null;
-        const name = parent.name.trim();
+        return parent.name.trim();
+    }
+
+    function truncate(name) {
         return name.length > PARENT_NAME_MAX ? name.slice(0, PARENT_NAME_MAX - 1) + '…' : name;
     }
 
@@ -69,7 +72,8 @@
             if (parentId) {
                 const parentName = await getParentName(t, parentId);
                 badges.push({
-                    text: parentName ? '↳ ' + parentName : 'sub-task',
+                    text: parentName ? truncate(parentName) : 'sub-task',
+                    title: parentName || undefined,
                     icon: ICON,
                     color: null,
                 });
@@ -92,7 +96,7 @@
                 const parentName = await getParentName(t, parentId);
                 badges.push({
                     title: 'Parent',
-                    text: parentName || 'View',
+                    text: parentName ? truncate(parentName) : 'View',
                     color: null,
                     callback: async function (t) {
                         // t.navigate() (not t.showCard()) so the card-back-section
